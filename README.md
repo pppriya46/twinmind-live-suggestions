@@ -4,13 +4,13 @@ Real-time meeting copilot: mic → live transcript → 3 actionable suggestions 
 
 **[Live demo →](https://twinmind-live-suggestions-six.vercel.app/)**
 
-**Stack:** React + Vite · Groq SDK · Whisper Large V3 · openai/gpt-oss-120b via Groq · runs entirely in the browser
+**Stack:** React + Vite · Groq SDK · Whisper Large V3 · `openai/gpt-oss-120b` via Groq · runs entirely in the browser
 
 ---
 
 ## The problem
 
-The obvious approach — surface what was just said — echoes the conversation back. The user already heard it. What they actually need is what the meeting still requires: the question nobody asked, the number that doesn't add up, the commitment with no owner, the deadline nobody pinned down.
+Most meeting tools record what happened. That is not what you need mid-conversation. This tool listens continuously and surfaces the things worth acting on right now: the follow-up question that would move things forward, the number that does not add up, the commitment with no owner.
 
 ---
 
@@ -22,17 +22,25 @@ Microphone
    ▼  (Web Audio API — 30s chunks)
 Whisper Large V3  ──► transcript chunks (timestamped, append-only)
                               │
-                              ▼  (every 30s)
-               gpt-oss-120b via Groq  ──► 3 suggestion cards (JSON)
-                              │
-                              ▼  (on tap)
-               gpt-oss-120b via Groq  ──► detail answer (streamed)
-                              │
-                              ▼  (free-form follow-up)
-               gpt-oss-120b via Groq  ──► chat response (streamed)
+                    ┌─────────┴──────────┐
+                    ▼  (every 30s)       ▼  (on tap)
+          gpt-oss-120b via Groq    gpt-oss-120b via Groq
+          3 suggestion cards       detail answer (streamed)
+                                         │
+                                         ▼  (free-form follow-up)
+                                   gpt-oss-120b via Groq
+                                   chat response (streamed)
 ```
 
-Three-column layout: transcript left, suggestion cards middle, chat right. Each card has a type and a short preview. Tapping streams a full detail answer into chat.
+Three-column layout: transcript left, suggestion cards middle, chat right. Each card carries a type and a short preview that delivers value on its own. Tapping streams a full detail answer into the chat panel.
+
+---
+
+## Prerequisites
+
+- Node.js 18+
+- A modern browser (Chrome or Edge recommended — mic access requires HTTPS or localhost)
+- A Groq API key (`gsk_...`)
 
 ---
 
@@ -43,7 +51,11 @@ npm install
 npm run dev
 ```
 
-Open → **Settings** → paste Groq API key (`gsk_...`) → hit mic. All prompts, temperatures, and intervals are editable in Settings without a rebuild.
+Open `http://localhost:5173` → **Settings** → paste your Groq API key → hit the mic button.
+
+Microphone access requires a secure context. `localhost` works in development. For any deployed URL, HTTPS is required — Vercel and Netlify enforce this automatically.
+
+All prompts, temperatures, and intervals are editable in Settings without a rebuild.
 
 ---
 
@@ -74,13 +86,13 @@ src/
 
 ## Prompt design
 
-Three prompts, each tuned separately:
+Three prompts, each with a distinct role:
 
-- **Suggestions** (temp 0.25) — low temperature, strict JSON output. Returns exactly 3 cards from 5 types: `question`, `talking_point`, `clarification`, `answer`, `fact_check`. Every suggestion must anchor to something in the transcript — no anchor, discarded.
-- **Detail** (temp 0.4) — triggered on tap. Leads with a verbatim speakable line first, then context. Format varies by suggestion type.
-- **Chat** (temp 0.4) — free-form follow-up. Under 150 words, no re-explaining prior context, never invents facts not in the transcript.
+**Suggestions** — returns exactly 3 cards every 30 seconds, each typed and anchored to something specific in the transcript. Five types cover the gaps that matter in a live conversation: an unasked question, an unconnected insight, a vague term that needs pinning, a question that just got answered, a factual conflict. Already-surfaced suggestions are injected into each prompt to prevent repeats.
 
-Suggestions also track what's already been surfaced and inject it into the prompt to prevent repeats.
+**Detail** — triggered on tap. Leads with a speakable line the user can say directly in the meeting. Format adapts to the suggestion type so the response is immediately usable, not just informational.
+
+**Chat** — free-form follow-up grounded in the transcript. Stays concise and never fills gaps with invented context.
 
 ---
 
@@ -92,14 +104,4 @@ All tuneable without a rebuild:
 - Suggestion & transcription interval (default 30s)
 - Context window (words sent to the model, default 300)
 - System prompts for suggestions, detail, and chat
-- Temperature and max tokens for each model call
-
----
-
-## What's next
-
-**Cross-meeting memory** — each session is currently stateless. The next layer is tracking what was discussed, decided, and left open across sessions so the copilot can surface unresolved threads from weeks ago.
-
-**Pre-meeting context** — before a meeting starts, pull relevant threads from past sessions with the same people or topic. The copilot should know what's unresolved before the first word is spoken.
-
-**Persistent knowledge graph** — as sessions accumulate, build a per-user graph of people, decisions, and open threads. Suggestions get more precise the longer you use it.
+- Temperature and max tokens per model call
